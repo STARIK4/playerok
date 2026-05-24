@@ -41,9 +41,10 @@ CONFIG = SettingsFile(
             },
             "auto_bump_items": {
                 "enabled": False,
-                "interval": 3600,
+                "interval": 5400,
                 "all": False,
-                "last_time": ""
+                "last_time": "",
+                "current_index": 0
             },
             "auto_withdrawal": {
                 "enabled": False,

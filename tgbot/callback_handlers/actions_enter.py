@@ -272,6 +272,48 @@ async def callback_enter_auto_bump_items_interval(callback: CallbackQuery, state
     )
 
 
+@router.callback_query(calls.EnterIncludedBumpItemInterval.filter())
+async def callback_enter_included_bump_item_interval(callback: CallbackQuery, callback_data: calls.EnterIncludedBumpItemInterval, state: FSMContext):
+    await state.set_state(None)
+
+    index = callback_data.index
+    await state.update_data(included_bump_item_index=index)
+
+    data = await state.get_data()
+    last_page = data.get("last_page", 0)
+
+    auto_bump_items = sett.get("auto_bump_items")
+    config = sett.get("config")
+    default_interval = config["playerok"]["auto_bump_items"].get("interval") or 5400
+
+    included = auto_bump_items.get("included") or []
+    entry = included[index] if 0 <= index < len(included) else None
+    if isinstance(entry, dict):
+        keyphrases = entry.get("keyphrases") or []
+        current_interval = entry.get("interval")
+    elif isinstance(entry, list):
+        keyphrases = entry
+        current_interval = None
+    else:
+        keyphrases = []
+        current_interval = None
+
+    current_lbl = f"<code>{current_interval}</code> сек." if current_interval else f"общий (<code>{default_interval}</code> сек.)"
+    keyphrases_lbl = ", ".join(keyphrases) or "(пусто)"
+
+    await state.set_state(states.BumpItemsStates.waiting_for_included_bump_item_interval)
+    await throw_float_message(
+        state=state,
+        message=callback.message,
+        text=templ.bump_included_float_text(
+            f"⏰ Введите <b>интервал поднятия</b> для товара <code>{keyphrases_lbl}</code>:"
+            f"\n\n・ <b>Текущий:</b> {current_lbl}"
+            f"\n・ Введите <code>0</code> или <code>-</code>, чтобы использовать общий интервал."
+        ),
+        reply_markup=templ.back_kb(calls.IncludedBumpItemsPagination(page=last_page).pack())
+    )
+
+
 @router.callback_query(F.data == "enter_new_included_bump_item_keyphrases")
 async def callback_enter_new_included_bump_item_keyphrases(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()

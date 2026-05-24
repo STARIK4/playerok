@@ -43,18 +43,70 @@ async def handler_waiting_for_bump_items_interval(message: types.Message, state:
         )
 
 
+@router.message(states.BumpItemsStates.waiting_for_included_bump_item_interval, F.text)
+async def handler_waiting_for_included_bump_item_interval(message: types.Message, state: FSMContext):
+    try:
+        await state.set_state(None)
+
+        data = await state.get_data()
+        last_page = data.get("last_page", 0)
+        index = data.get("included_bump_item_index")
+
+        raw = message.text.strip().lower()
+        if raw in ("", "0", "общий", "сброс", "default", "-", "reset"):
+            new_interval = None
+        else:
+            if not raw.isdigit():
+                raise Exception("❌ Вы должны ввести числовое значение (или 0/Enter — общий)")
+            new_interval = int(raw)
+            if new_interval <= 0:
+                raise Exception("❌ Слишком низкое значение")
+
+        auto_bump_items = sett.get("auto_bump_items")
+        included = auto_bump_items.get("included") or []
+        if index is None or index < 0 or index >= len(included):
+            raise Exception("❌ Товар не найден")
+
+        entry = included[index]
+        if isinstance(entry, dict):
+            entry["interval"] = new_interval
+            if "keyphrases" not in entry:
+                entry["keyphrases"] = []
+        else:
+            included[index] = {"keyphrases": list(entry) if isinstance(entry, list) else [], "interval": new_interval}
+        auto_bump_items["included"] = included
+        sett.set("auto_bump_items", auto_bump_items)
+
+        info = f"{new_interval} сек." if new_interval else "общий интервал"
+        await throw_float_message(
+            state=state,
+            message=message,
+            text=templ.bump_included_float_text(f"✅ Интервал товара успешно установлен: <b>{info}</b>"),
+            reply_markup=templ.back_kb(calls.IncludedBumpItemsPagination(page=last_page).pack())
+        )
+    except Exception as e:
+        data = await state.get_data()
+        last_page = data.get("last_page", 0)
+        await throw_float_message(
+            state=state,
+            message=message,
+            text=templ.bump_included_float_text(e),
+            reply_markup=templ.back_kb(calls.IncludedBumpItemsPagination(page=last_page).pack())
+        )
+
+
 @router.message(states.BumpItemsStates.waiting_for_new_included_bump_item_keyphrases, F.text)
 async def handler_waiting_for_new_included_bump_item_keyphrases(message: types.Message, state: FSMContext):
-    try: 
+    try:
         await state.set_state(None)
-        
+
         if len(message.text) <= 0:
             raise Exception("❌ Слишком короткое значение")
-        
+
         keyphrases = [phrase.strip() for phrase in message.text.split(",") if phrase.strip()]
-        
+
         auto_bump_items = sett.get("auto_bump_items")
-        auto_bump_items["included"].append(keyphrases)
+        auto_bump_items["included"].append({"keyphrases": keyphrases, "interval": None})
         sett.set("auto_bump_items", auto_bump_items)
 
         data = await state.get_data()
@@ -101,7 +153,9 @@ async def handler_waiting_for_new_included_bump_items_keyphrases_file(message: t
             raise Exception("❌ Файл не содержит валидных ключевых фраз")
 
         auto_bump_items = sett.get("auto_bump_items")
-        auto_bump_items["included"].extend(keyphrases_list)
+        auto_bump_items["included"].extend(
+            [{"keyphrases": kp, "interval": None} for kp in keyphrases_list]
+        )
         sett.set("auto_bump_items", auto_bump_items)
 
         data = await state.get_data()
