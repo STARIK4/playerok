@@ -60,10 +60,14 @@ async def callback_switch_auto_restore_items_all(callback: CallbackQuery, state:
 
 @router.callback_query(F.data == "switch_auto_bump_items_enabled")
 async def callback_switch_auto_bump_items_enabled(callback: CallbackQuery, state: FSMContext):
+    from datetime import datetime as _dt
     config = sett.get("config")
-    config["playerok"]["auto_bump_items"]["enabled"] = not config["playerok"]["auto_bump_items"]["enabled"]
+    new_value = not config["playerok"]["auto_bump_items"]["enabled"]
+    config["playerok"]["auto_bump_items"]["enabled"] = new_value
+    if new_value:
+        config["playerok"]["auto_bump_items"]["last_time"] = _dt.now().isoformat()
     sett.set("config", config)
-    
+
     return await callback_menu_navigation(
         callback, calls.MenuNavigation(to="bump"), state
     )
