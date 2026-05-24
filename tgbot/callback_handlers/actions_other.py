@@ -215,20 +215,35 @@ async def callback_delete_excluded_complete_deal(callback: CallbackQuery, callba
 async def callback_delete_included_bump_item(callback: CallbackQuery, callback_data: calls.DeleteIncludedBumpItem, state: FSMContext):
     try:
         await state.set_state(None)
-        
+
         data = await state.get_data()
         last_page = data.get("last_page", 0)
-        
+
         index = callback_data.index
         if index is None:
             return await callback_included_bump_items_pagination(
                 callback, calls.IncludedBumpItemsPagination(page=last_page), state
             )
-        
+
         auto_bump_items = sett.get("auto_bump_items")
         auto_bump_items["included"].pop(index)
+        intervals = list(auto_bump_items.get("intervals") or [])
+        if index < len(intervals):
+            intervals.pop(index)
+        auto_bump_items["intervals"] = intervals
         sett.set("auto_bump_items", auto_bump_items)
-        
+
+        config = sett.get("config")
+        included_len = len(auto_bump_items["included"])
+        cur = config["playerok"]["auto_bump_items"].get("current_index", 0) or 0
+        if included_len == 0:
+            config["playerok"]["auto_bump_items"]["current_index"] = 0
+        elif cur >= included_len:
+            config["playerok"]["auto_bump_items"]["current_index"] = 0
+        elif index < cur:
+            config["playerok"]["auto_bump_items"]["current_index"] = cur - 1
+        sett.set("config", config)
+
         return await callback_included_bump_items_pagination(
             callback, calls.IncludedBumpItemsPagination(page=last_page), state
         )

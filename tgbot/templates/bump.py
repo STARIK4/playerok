@@ -32,13 +32,14 @@ def bump_text():
     
     txt = textwrap.dedent(f"""
         <b>⬆️ Авто-поднятие</b>
-        <blockquote><b>(?)</b> Бот будет автоматически поднимать товары по интервалу, то есть, будет обновлять их PREMIUM статус, чтобы они снова были в топе.</blockquote>
+        <blockquote><b>(?)</b> Бот будет автоматически поднимать товары по очереди (1 → 2 → ... → N → 1), обновляя их PREMIUM статус, чтобы они снова были в топе.</blockquote>
 
         <b>💡 Включено:</b> {enabled}
-        <b>⏰ Интервал:</b> {interval} сек.
+        <b>⏰ Общий интервал:</b> {interval} сек.
+        <blockquote><b>(?)</b> Используется для товаров без индивидуального интервала. Индивидуальный интервал задаётся для каждого включенного товара отдельно (кнопка ⏰ во "Включенных").</blockquote>
 
         <b>📦 Поднимать:</b> {all}
-        <blockquote><b>(?)</b> Если вы выберете "Все товары", то будут подниматься все товары, кроме тех, что указаны в исключениях. Если вы выберете "Указанные товары", то будут подниматься только те товары, которые вы добавите во включенные.</blockquote>
+        <blockquote><b>(?)</b> "Все товары" — поднимать все товары разом по общему интервалу (кроме исключений). "Указанные товары" — циклический режим: товары поднимаются по очереди, каждый со своим интервалом.</blockquote>
 
         <b>➕ Включенные:</b> {included}
         <b>➖ Исключенные:</b> {excluded}
@@ -64,7 +65,7 @@ def bump_kb():
         [InlineKeyboardButton(text=f"⬆️ Поднять товары", callback_data="confirm_bump_items")],
         [InlineKeyboardButton(text=f"💡 Включено: {enabled}", callback_data="switch_auto_bump_items_enabled")],
         [InlineKeyboardButton(text=f"📦 Поднимать: {all}", callback_data="switch_auto_bump_items_all")],
-        [InlineKeyboardButton(text=f"⏰ Интервал: {interval} сек.", callback_data="enter_auto_bump_items_interval")],
+        [InlineKeyboardButton(text=f"⏰ Общий интервал: {interval} сек.", callback_data="enter_auto_bump_items_interval")],
         [
         InlineKeyboardButton(text=f"➕ Включенные: {included}", callback_data=calls.IncludedBumpItemsPagination(page=0).pack()),
         InlineKeyboardButton(text=f"➖ Исключенные: {excluded}", callback_data=calls.ExcludedBumpItemsPagination(page=0).pack())

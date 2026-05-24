@@ -33,6 +33,9 @@ class DeleteIncludedBumpItem(CallbackData, prefix="delinbu"):
 class DeleteExcludedBumpItem(CallbackData, prefix="delexbu"):
     index: int
 
+class EnterIncludedBumpItemInterval(CallbackData, prefix="enbuint"):
+    index: int
+
 
 class EnterFastReplyText(CallbackData, prefix="enrepl"):
     index: int

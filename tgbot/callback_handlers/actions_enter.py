@@ -272,6 +272,51 @@ async def callback_enter_auto_bump_items_interval(callback: CallbackQuery, state
     )
 
 
+@router.callback_query(calls.EnterIncludedBumpItemInterval.filter())
+async def callback_enter_included_bump_item_interval(callback: CallbackQuery, callback_data: calls.EnterIncludedBumpItemInterval, state: FSMContext):
+    await state.set_state(None)
+
+    index = callback_data.index
+    await state.update_data(included_bump_item_index=index)
+
+    data = await state.get_data()
+    last_page = data.get("last_page", 0)
+
+    auto_bump_items = sett.get("auto_bump_items")
+    included = auto_bump_items.get("included") or []
+    intervals = auto_bump_items.get("intervals") or []
+
+    if index < 0 or index >= len(included):
+        return await callback_included_bump_items_pagination(
+            callback, calls.IncludedBumpItemsPagination(page=last_page), state
+        )
+
+    keyphrases = included[index]
+    current_interval = None
+    if index < len(intervals):
+        try:
+            v = int(intervals[index])
+            if v > 0:
+                current_interval = v
+        except (TypeError, ValueError):
+            current_interval = None
+
+    current_str = f"<code>{current_interval}</code> сек." if current_interval else "по умолчанию"
+
+    await state.set_state(states.BumpItemsStates.waiting_for_included_bump_item_interval)
+    await throw_float_message(
+        state=state,
+        message=callback.message,
+        text=templ.bump_included_float_text(
+            f"⏰ Введите <b>интервал поднятия</b> для товара "
+            f"<code>{', '.join(keyphrases)}</code> (в секундах)."
+            f"\n\n・ <b>Текущий:</b> {current_str}"
+            f"\n\n💡 Введите <b>0</b>, чтобы использовать общий интервал."
+        ),
+        reply_markup=templ.back_kb(calls.IncludedBumpItemsPagination(page=last_page).pack())
+    )
+
+
 @router.callback_query(F.data == "enter_new_included_bump_item_keyphrases")
 async def callback_enter_new_included_bump_item_keyphrases(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()

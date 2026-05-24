@@ -417,17 +417,17 @@ class PlayerokBot:
                 )
             return False
 
-    def bump_items(self): 
+    def bump_items(self):
         try:
             self.config["playerok"]["auto_bump_items"]["last_time"] = datetime.now().isoformat()
             sett.set("config", self.config)
 
             items = self.get_my_items(statuses=[ItemStatuses.APPROVED])
             up_items = [it for it in items if it.priority != PriorityTypes.DEFAULT]
-            
+
             total = len(up_items)
             cnt = 0
-            
+
             for item in up_items:
                 if self.bump_item(item):
                     cnt += 1
@@ -436,6 +436,85 @@ class PlayerokBot:
         except Exception as e:
             logger.error(f"{Fore.LIGHTRED_EX}Ошибка при поднятии товаров: {Fore.WHITE}{e}")
             return False, 0, 0, e
+
+    def _bump_one_item_directly(self, item: ItemProfile | MyItem):
+        """
+        Поднимает один товар без проверки на included/excluded.
+        Используется в режиме поочерёдного авто-поднятия,
+        где выбор товара уже сделан.
+        """
+        name_frmtd = item.name[:32] + ("..." if len(item.name) > 32 else "")
+        try:
+            if not isinstance(item, MyItem):
+                try: item = self.account.get_item(item.id)
+                except: return False
+
+            time.sleep(1)
+            statuses = self.account.get_item_priority_statuses(item.id, item.raw_price)
+
+            prem_status = next((st for st in statuses if st.type == PriorityTypes.PREMIUM or st.price > 0), None)
+            if not prem_status:
+                raise Exception("PREMIUM статус не найден")
+
+            time.sleep(1)
+            self.account.increase_item_priority_status(item.id, prem_status.id)
+
+            logger.info(
+                f"{Fore.LIGHTWHITE_EX}«{name_frmtd}» {Fore.WHITE}— {Fore.YELLOW}поднят. "
+                f"{Fore.WHITE}Позиция: {Fore.LIGHTWHITE_EX}{item.sequence} {Fore.WHITE}→ {Fore.YELLOW}1"
+            )
+
+            if (
+                self.config["playerok"]["notifications"]["enabled"]
+                and self.config["playerok"]["notifications"]["events"]["item_bumped"]
+            ):
+                self.log_to_tg(
+                    log_text(f'⬆️ Товар <a href="https://playerok.com/products/{item.slug}">«{item.name}»</a> поднят. Позиция: {item.sequence} → 1'),
+                    log_item_kb(item.id)
+                )
+            return True
+        except Exception as e:
+            logger.error(f"{Fore.LIGHTRED_EX}Ошибка при поднятии товара «{name_frmtd}»: {Fore.WHITE}{e}")
+            if (
+                self.config["playerok"]["notifications"]["enabled"]
+                and self.config["playerok"]["notifications"]["events"]["item_bumped"]
+            ):
+                self.log_to_tg(
+                    log_text(
+                        f'❌ Ошибка при поднятии товара <a href="https://playerok.com/products/{item.slug}">«{item.name}»</a>',
+                        f"<blockquote>{e}</blockquote>"
+                    ),
+                    log_item_kb(item.id)
+                )
+            return False
+
+    def bump_items_by_keyphrases(self, keyphrases: list[str]) -> tuple[int, int]:
+        """
+        Поднимает все товары аккаунта, чьё название подходит под
+        указанные ключевые фразы. Возвращает (всего найдено, успешно поднято).
+        """
+        try:
+            items = self.get_my_items(statuses=[ItemStatuses.APPROVED])
+        except Exception as e:
+            logger.error(f"{Fore.LIGHTRED_EX}Ошибка при получении товаров: {Fore.WHITE}{e}")
+            return 0, 0
+
+        matched = []
+        for item in items:
+            if item.priority == PriorityTypes.DEFAULT:
+                continue
+            name = (item.name or "").lower()
+            for phrase in keyphrases:
+                p = phrase.lower()
+                if p and (p in name or name == p):
+                    matched.append(item)
+                    break
+
+        cnt = 0
+        for item in matched:
+            if self._bump_one_item_directly(item):
+                cnt += 1
+        return len(matched), cnt
 
     def restore_item(self, item: Item | MyItem | ItemProfile):
         try:
@@ -702,15 +781,99 @@ class PlayerokBot:
                 time.sleep(45)
 
         def bump_items_loop():
+            prev_enabled = self.config["playerok"]["auto_bump_items"]["enabled"]
             while True:
-                if (
-                    self.config["playerok"]["auto_bump_items"]["enabled"]
-                    and self._do_call_event(
-                        self.config["playerok"]["auto_bump_items"]["last_time"],
-                        self.config["playerok"]["auto_bump_items"]["interval"]
-                    )
-                ):
-                    self.bump_items()
+                bump_cfg = self.config["playerok"]["auto_bump_items"]
+                enabled = bump_cfg["enabled"]
+
+                if not enabled:
+                    if prev_enabled:
+                        logger.info(f"{Fore.YELLOW}Авто-поднятие выключено, цикл остановлен")
+                    prev_enabled = False
+                    time.sleep(3)
+                    continue
+
+                if not prev_enabled:
+                    self.config["playerok"]["auto_bump_items"]["last_time"] = datetime.now().isoformat()
+                    sett.set("config", self.config)
+                    logger.info(f"{Fore.YELLOW}Авто-поднятие включено, цикл запущен")
+                prev_enabled = True
+
+                default_interval = bump_cfg["interval"]
+
+                if bump_cfg["all"]:
+                    if self._do_call_event(bump_cfg["last_time"], default_interval):
+                        self.bump_items()
+                    time.sleep(3)
+                    continue
+
+                included: list[list[str]] = list(self.auto_bump_items.get("included") or [])
+                intervals: list = list(self.auto_bump_items.get("intervals") or [])
+
+                if not included:
+                    time.sleep(3)
+                    continue
+
+                idx = bump_cfg.get("current_index", 0) or 0
+                if idx < 0 or idx >= len(included):
+                    idx = 0
+                    self.config["playerok"]["auto_bump_items"]["current_index"] = 0
+                    sett.set("config", self.config)
+
+                item_interval = None
+                if idx < len(intervals):
+                    try:
+                        v = int(intervals[idx])
+                        if v > 0:
+                            item_interval = v
+                    except (TypeError, ValueError):
+                        item_interval = None
+                interval = item_interval if item_interval else default_interval
+
+                if self._do_call_event(bump_cfg["last_time"], interval):
+                    try:
+                        keyphrases = included[idx]
+                        total, cnt = self.bump_items_by_keyphrases(keyphrases)
+
+                        phrases_frmtd = ", ".join(keyphrases) or "-"
+                        if total == 0:
+                            logger.info(
+                                f"{Fore.YELLOW}Авто-поднятие [{idx+1}/{len(included)}]: "
+                                f"{Fore.WHITE}не найдено товаров по ключевым фразам "
+                                f"{Fore.LIGHTWHITE_EX}«{phrases_frmtd}»"
+                            )
+                            if (
+                                self.config["playerok"]["notifications"]["enabled"]
+                                and self.config["playerok"]["notifications"]["events"]["item_bumped"]
+                            ):
+                                self.log_to_tg(log_text(
+                                    f"⬆️ Авто-поднятие [{idx+1}/{len(included)}]:"
+                                    f" не найдено товаров по фразам <code>{phrases_frmtd}</code>"
+                                ))
+                        else:
+                            logger.info(
+                                f"{Fore.YELLOW}Авто-поднятие [{idx+1}/{len(included)}]: "
+                                f"{Fore.WHITE}поднято {Fore.LIGHTWHITE_EX}{cnt}/{total} "
+                                f"{Fore.WHITE}товаров по «{phrases_frmtd}»"
+                            )
+                    except Exception as e:
+                        logger.error(
+                            f"{Fore.LIGHTRED_EX}Ошибка авто-поднятия "
+                            f"[{idx+1}/{len(included)}]: {Fore.WHITE}{e}"
+                        )
+                        if (
+                            self.config["playerok"]["notifications"]["enabled"]
+                            and self.config["playerok"]["notifications"]["events"]["item_bumped"]
+                        ):
+                            self.log_to_tg(log_text(
+                                f"❌ Ошибка авто-поднятия [{idx+1}/{len(included)}]",
+                                f"<blockquote>{e}</blockquote>"
+                            ))
+                    finally:
+                        next_idx = (idx + 1) % len(included)
+                        self.config["playerok"]["auto_bump_items"]["current_index"] = next_idx
+                        self.config["playerok"]["auto_bump_items"]["last_time"] = datetime.now().isoformat()
+                        sett.set("config", self.config)
                 time.sleep(3)
 
         def withdrawal_loop():

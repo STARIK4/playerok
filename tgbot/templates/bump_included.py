@@ -9,16 +9,22 @@ from .. import callback_datas as calls
 
 def bump_included_text():
     included_bump_items = sett.get("auto_bump_items").get("included")
+    config = sett.get("config")
+    default_interval = config["playerok"]["auto_bump_items"]["interval"]
     txt = textwrap.dedent(f"""
         <b>⬆️➕ Включенные</b>
-        Всего <b>{len(included_bump_items)}</b> включенных товаров:
+        Всего <b>{len(included_bump_items)}</b> включенных товаров.
+
+        <blockquote><b>(?)</b> Товары поднимаются по очереди (1 → 2 → ... → N → 1). Для каждого товара можно задать <b>свой интервал</b> кнопкой ⏰. Если интервал не задан — используется общий ({default_interval} сек.).</blockquote>
     """)
     return txt
 
 
 def bump_included_kb(page=0):
-    included_bump_items: list[list] = sett.get("auto_bump_items").get("included")
-    
+    auto_bump_items = sett.get("auto_bump_items")
+    included_bump_items: list[list] = auto_bump_items.get("included") or []
+    intervals: list = auto_bump_items.get("intervals") or []
+
     rows = []
     items_per_page = 7
     total_pages = math.ceil(len(included_bump_items) / items_per_page)
@@ -32,9 +38,24 @@ def bump_included_kb(page=0):
 
     for keyphrases in list(included_bump_items)[start_offset:end_offset]:
         keyphrases_frmtd = ", ".join(keyphrases) or "❌ Не указано"
+        idx = included_bump_items.index(keyphrases)
+
+        interval_val = None
+        if idx < len(intervals):
+            try:
+                v = int(intervals[idx])
+                if v > 0:
+                    interval_val = v
+            except (TypeError, ValueError):
+                interval_val = None
+        interval_label = f"⏰ {interval_val} сек." if interval_val else "⏰ Общий"
+
         rows.append([
             InlineKeyboardButton(text=f"{keyphrases_frmtd}", callback_data="null_answer"),
-            InlineKeyboardButton(text=f"🗑️", callback_data=calls.DeleteIncludedBumpItem(index=included_bump_items.index(keyphrases)).pack()),
+        ])
+        rows.append([
+            InlineKeyboardButton(text=interval_label, callback_data=calls.EnterIncludedBumpItemInterval(index=idx).pack()),
+            InlineKeyboardButton(text=f"🗑️", callback_data=calls.DeleteIncludedBumpItem(index=idx).pack()),
         ])
 
     if total_pages > 1:

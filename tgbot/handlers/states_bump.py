@@ -43,6 +43,62 @@ async def handler_waiting_for_bump_items_interval(message: types.Message, state:
         )
 
 
+@router.message(states.BumpItemsStates.waiting_for_included_bump_item_interval, F.text)
+async def handler_waiting_for_included_bump_item_interval(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    last_page = data.get("last_page", 0)
+    index = data.get("included_bump_item_index")
+    try:
+        await state.set_state(None)
+
+        if index is None:
+            raise Exception("❌ Не выбран товар")
+        if not message.text.lstrip("-").isdigit():
+            raise Exception("❌ Вы должны ввести числовое значение")
+        interval = int(message.text)
+        if interval < 0:
+            raise Exception("❌ Слишком низкое значение")
+
+        auto_bump_items = sett.get("auto_bump_items")
+        included = auto_bump_items.get("included") or []
+        intervals = list(auto_bump_items.get("intervals") or [])
+
+        if index >= len(included):
+            raise Exception("❌ Товар не найден")
+
+        while len(intervals) < len(included):
+            intervals.append(0)
+
+        intervals[index] = interval
+        auto_bump_items["intervals"] = intervals
+        sett.set("auto_bump_items", auto_bump_items)
+
+        if interval == 0:
+            txt = (
+                f"✅ Для товара <code>{', '.join(included[index])}</code> "
+                f"теперь используется <b>общий интервал</b>"
+            )
+        else:
+            txt = (
+                f"✅ <b>Интервал</b> для товара <code>{', '.join(included[index])}</code> "
+                f"установлен в <b>{interval} сек.</b>"
+            )
+
+        await throw_float_message(
+            state=state,
+            message=message,
+            text=templ.bump_included_float_text(txt),
+            reply_markup=templ.back_kb(calls.IncludedBumpItemsPagination(page=last_page).pack())
+        )
+    except Exception as e:
+        await throw_float_message(
+            state=state,
+            message=message,
+            text=templ.bump_included_float_text(e),
+            reply_markup=templ.back_kb(calls.IncludedBumpItemsPagination(page=last_page).pack())
+        )
+
+
 @router.message(states.BumpItemsStates.waiting_for_new_included_bump_item_keyphrases, F.text)
 async def handler_waiting_for_new_included_bump_item_keyphrases(message: types.Message, state: FSMContext):
     try: 
