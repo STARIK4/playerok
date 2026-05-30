@@ -75,6 +75,9 @@ class BumpItemsStates(StatesGroup):
     waiting_for_bump_items_interval = State()
     waiting_for_included_bump_item_interval = State()
 
+    waiting_for_bump_schedule_start = State()
+    waiting_for_bump_schedule_end = State()
+
     waiting_for_new_included_bump_item_keyphrases = State()
     waiting_for_new_included_bump_items_keyphrases_file = State()
 
