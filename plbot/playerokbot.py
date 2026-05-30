@@ -92,8 +92,6 @@ class PlayerokBot:
 
         self.__saved_chats: dict[str, Chat] = {}
 
-        self._bump_was_in_pause = False
-
     def get_chat_by_id(self, chat_id: str) -> Chat:
         if chat_id in self.__saved_chats:
             return self.__saved_chats[chat_id]
@@ -470,73 +468,6 @@ class PlayerokBot:
             logger.error(f"{Fore.LIGHTRED_EX}Ошибка при поднятии товаров: {Fore.WHITE}{e}")
             return False, 0, 0, e
 
-    @staticmethod
-    def _parse_pause_time(s: str):
-        """Parse 'HH:MM' into a (hour, minute) tuple. Returns None on failure."""
-        if not isinstance(s, str):
-            return None
-        s = s.strip()
-        if not s:
-            return None
-        try:
-            hh, mm = s.split(":")
-            h, m = int(hh), int(mm)
-            if 0 <= h < 24 and 0 <= m < 60:
-                return (h, m)
-        except Exception:
-            return None
-        return None
-
-    def _pause_window_for_date(self, day, start_hm, end_hm):
-        """Return the (start_dt, end_dt) of the pause window anchored on `day`.
-
-        If end <= start, the window wraps past midnight and ends on the next day."""
-        start_dt = datetime.combine(day, datetime.min.time()).replace(hour=start_hm[0], minute=start_hm[1])
-        end_dt = datetime.combine(day, datetime.min.time()).replace(hour=end_hm[0], minute=end_hm[1])
-        if end_dt <= start_dt:
-            end_dt = end_dt + timedelta(days=1)
-        return start_dt, end_dt
-
-    def _get_schedule(self):
-        """Returns (enabled, start_hm, end_hm) or (False, None, None) if schedule is inactive/invalid."""
-        section = self.config["playerok"]["auto_bump_items"].get("schedule") or {}
-        if not section.get("enabled"):
-            return False, None, None
-        start_hm = self._parse_pause_time(section.get("pause_start"))
-        end_hm = self._parse_pause_time(section.get("pause_end"))
-        if start_hm is None or end_hm is None or start_hm == end_hm:
-            return False, None, None
-        return True, start_hm, end_hm
-
-    def _is_in_pause(self, now: datetime):
-        """Return (in_pause, current_window_start_dt, current_window_end_dt) if in pause; (False, None, None) otherwise."""
-        enabled, start_hm, end_hm = self._get_schedule()
-        if not enabled:
-            return False, None, None
-        for offset in (-1, 0):
-            day = (now + timedelta(days=offset)).date()
-            start_dt, end_dt = self._pause_window_for_date(day, start_hm, end_hm)
-            if start_dt <= now < end_dt:
-                return True, start_dt, end_dt
-        return False, None, None
-
-    def _pause_overlap_seconds(self, start_dt: datetime, end_dt: datetime) -> float:
-        """Total seconds inside [start_dt, end_dt] that fall within any pause window."""
-        enabled, start_hm, end_hm = self._get_schedule()
-        if not enabled or end_dt <= start_dt:
-            return 0.0
-        total = 0.0
-        day = start_dt.date() - timedelta(days=1)
-        last_day = end_dt.date() + timedelta(days=1)
-        while day <= last_day:
-            w_start, w_end = self._pause_window_for_date(day, start_hm, end_hm)
-            ov_start = max(w_start, start_dt)
-            ov_end = min(w_end, end_dt)
-            if ov_end > ov_start:
-                total += (ov_end - ov_start).total_seconds()
-            day += timedelta(days=1)
-        return total
-
     def bump_cycle_step(self):
         """Single tick of the round-robin auto-bump cycle.
 
@@ -547,42 +478,6 @@ class PlayerokBot:
         last_time_iso = config_section.get("last_time")
         current_index = config_section.get("current_index", 0) or 0
         use_all = config_section.get("all", False)
-
-        now = datetime.now()
-        in_pause, pause_start_dt, pause_end_dt = self._is_in_pause(now)
-        if in_pause:
-            if not self._bump_was_in_pause:
-                self._bump_was_in_pause = True
-                start_lbl = pause_start_dt.strftime("%H:%M")
-                end_lbl = pause_end_dt.strftime("%H:%M")
-                logger.info(
-                    f"{Fore.LIGHTCYAN_EX}Пауза с {start_lbl} до {end_lbl} — поднятия приостановлены"
-                )
-                try:
-                    if (
-                        self.config["playerok"]["notifications"]["enabled"]
-                        and self.config["playerok"]["notifications"]["events"]["item_bumped"]
-                    ):
-                        self.log_to_tg(
-                            log_text(f"🌙 Пауза с {start_lbl} до {end_lbl} — поднятия приостановлены")
-                        )
-                except Exception:
-                    pass
-            return False
-        else:
-            if self._bump_was_in_pause:
-                self._bump_was_in_pause = False
-                logger.info(f"{Fore.LIGHTCYAN_EX}Пауза завершена — возобновление работы")
-                try:
-                    if (
-                        self.config["playerok"]["notifications"]["enabled"]
-                        and self.config["playerok"]["notifications"]["events"]["item_bumped"]
-                    ):
-                        self.log_to_tg(
-                            log_text("☀️ Пауза завершена — возобновление работы")
-                        )
-                except Exception:
-                    pass
 
         excluded_lists = self._get_bump_excluded_entries()
         included_entries = self._get_bump_included_entries()
@@ -600,12 +495,10 @@ class PlayerokBot:
 
         if last_time_iso:
             try:
-                last_dt = datetime.fromisoformat(last_time_iso)
+                next_time = datetime.fromisoformat(last_time_iso) + timedelta(seconds=interval)
             except Exception:
-                last_dt = now
-            elapsed = (now - last_dt).total_seconds()
-            elapsed -= self._pause_overlap_seconds(last_dt, now)
-            if elapsed < interval:
+                next_time = datetime.now()
+            if datetime.now() < next_time:
                 return False
 
         try:

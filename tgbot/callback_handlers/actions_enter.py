@@ -314,44 +314,6 @@ async def callback_enter_included_bump_item_interval(callback: CallbackQuery, ca
     )
 
 
-@router.callback_query(F.data == "enter_auto_bump_schedule_start")
-async def callback_enter_auto_bump_schedule_start(callback: CallbackQuery, state: FSMContext):
-    await state.set_state(states.BumpItemsStates.waiting_for_bump_schedule_start)
-
-    config = sett.get("config")
-    schedule = config["playerok"]["auto_bump_items"].get("schedule") or {}
-    current = schedule.get("pause_start") or "не задано"
-
-    await throw_float_message(
-        state=state,
-        message=callback.message,
-        text=templ.bump_float_text(
-            f"🌙 Введите <b>время начала паузы</b> в формате <code>чч:мм</code> (например, <code>02:00</code>):"
-            f"\n\n・ <b>Текущее:</b> <code>{current}</code>"
-        ),
-        reply_markup=templ.back_kb(calls.MenuNavigation(to="bump").pack())
-    )
-
-
-@router.callback_query(F.data == "enter_auto_bump_schedule_end")
-async def callback_enter_auto_bump_schedule_end(callback: CallbackQuery, state: FSMContext):
-    await state.set_state(states.BumpItemsStates.waiting_for_bump_schedule_end)
-
-    config = sett.get("config")
-    schedule = config["playerok"]["auto_bump_items"].get("schedule") or {}
-    current = schedule.get("pause_end") or "не задано"
-
-    await throw_float_message(
-        state=state,
-        message=callback.message,
-        text=templ.bump_float_text(
-            f"☀️ Введите <b>время окончания паузы</b> в формате <code>чч:мм</code> (например, <code>08:00</code>):"
-            f"\n\n・ <b>Текущее:</b> <code>{current}</code>"
-        ),
-        reply_markup=templ.back_kb(calls.MenuNavigation(to="bump").pack())
-    )
-
-
 @router.callback_query(F.data == "enter_new_included_bump_item_keyphrases")
 async def callback_enter_new_included_bump_item_keyphrases(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
