@@ -44,12 +44,7 @@ CONFIG = SettingsFile(
                 "interval": 5400,
                 "all": False,
                 "last_time": "",
-                "current_index": 0,
-                "schedule": {
-                    "enabled": False,
-                    "pause_start": "02:00",
-                    "pause_end": "08:00"
-                }
+                "current_index": 0
             },
             "auto_withdrawal": {
                 "enabled": False,

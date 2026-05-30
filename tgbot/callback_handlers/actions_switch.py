@@ -78,21 +78,7 @@ async def callback_switch_auto_bump_items_all(callback: CallbackQuery, state: FS
     config = sett.get("config")
     config["playerok"]["auto_bump_items"]["all"] = not config["playerok"]["auto_bump_items"]["all"]
     sett.set("config", config)
-
-    return await callback_menu_navigation(
-        callback, calls.MenuNavigation(to="bump"), state
-    )
-
-
-@router.callback_query(F.data == "switch_auto_bump_schedule_enabled")
-async def callback_switch_auto_bump_schedule_enabled(callback: CallbackQuery, state: FSMContext):
-    config = sett.get("config")
-    schedule = config["playerok"]["auto_bump_items"].setdefault("schedule", {
-        "enabled": False, "pause_start": "02:00", "pause_end": "08:00"
-    })
-    schedule["enabled"] = not schedule.get("enabled", False)
-    sett.set("config", config)
-
+    
     return await callback_menu_navigation(
         callback, calls.MenuNavigation(to="bump"), state
     )
