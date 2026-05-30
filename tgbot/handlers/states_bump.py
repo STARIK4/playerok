@@ -43,6 +43,71 @@ async def handler_waiting_for_bump_items_interval(message: types.Message, state:
         )
 
 
+def _parse_hhmm(raw: str):
+    raw = (raw or "").strip()
+    if ":" not in raw:
+        raise Exception("❌ Формат должен быть <code>чч:мм</code> (например, <code>02:00</code>)")
+    parts = raw.split(":")
+    if len(parts) != 2 or not parts[0].isdigit() or not parts[1].isdigit():
+        raise Exception("❌ Формат должен быть <code>чч:мм</code> (например, <code>02:00</code>)")
+    h, m = int(parts[0]), int(parts[1])
+    if not (0 <= h < 24 and 0 <= m < 60):
+        raise Exception("❌ Часы 0-23, минуты 0-59")
+    return f"{h:02d}:{m:02d}"
+
+
+@router.message(states.BumpItemsStates.waiting_for_bump_schedule_start, F.text)
+async def handler_waiting_for_bump_schedule_start(message: types.Message, state: FSMContext):
+    try:
+        await state.set_state(None)
+        value = _parse_hhmm(message.text)
+
+        config = sett.get("config")
+        config["playerok"]["auto_bump_items"].setdefault("schedule", {})
+        config["playerok"]["auto_bump_items"]["schedule"]["pause_start"] = value
+        sett.set("config", config)
+
+        await throw_float_message(
+            state=state,
+            message=message,
+            text=templ.bump_float_text(f"✅ <b>Начало паузы</b> установлено на <b>{value}</b>"),
+            reply_markup=templ.back_kb(calls.MenuNavigation(to="bump").pack())
+        )
+    except Exception as e:
+        await throw_float_message(
+            state=state,
+            message=message,
+            text=templ.bump_float_text(e),
+            reply_markup=templ.back_kb(calls.MenuNavigation(to="bump").pack())
+        )
+
+
+@router.message(states.BumpItemsStates.waiting_for_bump_schedule_end, F.text)
+async def handler_waiting_for_bump_schedule_end(message: types.Message, state: FSMContext):
+    try:
+        await state.set_state(None)
+        value = _parse_hhmm(message.text)
+
+        config = sett.get("config")
+        config["playerok"]["auto_bump_items"].setdefault("schedule", {})
+        config["playerok"]["auto_bump_items"]["schedule"]["pause_end"] = value
+        sett.set("config", config)
+
+        await throw_float_message(
+            state=state,
+            message=message,
+            text=templ.bump_float_text(f"✅ <b>Окончание паузы</b> установлено на <b>{value}</b>"),
+            reply_markup=templ.back_kb(calls.MenuNavigation(to="bump").pack())
+        )
+    except Exception as e:
+        await throw_float_message(
+            state=state,
+            message=message,
+            text=templ.bump_float_text(e),
+            reply_markup=templ.back_kb(calls.MenuNavigation(to="bump").pack())
+        )
+
+
 @router.message(states.BumpItemsStates.waiting_for_included_bump_item_interval, F.text)
 async def handler_waiting_for_included_bump_item_interval(message: types.Message, state: FSMContext):
     try:
